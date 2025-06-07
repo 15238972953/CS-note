@@ -1030,4 +1030,7 @@ void main()
 
  typedef的功能是定义新的类型。第一句就是定义了一种PTRFUN的类型，并定义这种类型为指向某种函数的指针，这种函数以一个int为参数并返回char类型。后面就可以像使用int,char一样使用PTRFUN了。
 
-### 42.
+### 42.容器的空间配置器（allocator）
+
+STL 容器（如 `vector`, `list`, `map`）内部不直接用 `new` 和 `delete` 管理内存，而是通过 **allocator（配置器）** 接口来统一完成**内存申请 + 对象构造 + 内存释放 + 析构**四步。
+
