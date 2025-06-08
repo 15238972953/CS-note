@@ -443,6 +443,24 @@ reserve: 对某个vector容器调用reserve方法仅仅设置capacity这个值�
 
 常见的不能声明为虚函数的有：普通函数（非成员函数），静态成员函数，内联成员函数，构造函数，友元函数；
 
+![image-20250608193924065](D:\Hello World\CS-note\picture\image-20250608193924065.png)
+
+**总结一:**
+
+一个类里面定义了虚函数，那么编译阶段，编译器给这个类类型产生一个唯一的vftable虚函数表，虚函数表中主要存储的内容就是**RTTI指针**和**虚函数的地址**。当程序运行时，每一张虚函数表都会加载到内存的.rodata区；
+
+**总结二:**
+
+一个类里面定义了函数数，那么这个类定义的对象，其运行时，内存中开始部分，多存储一个vfptr虚函数指针，指向相应类型的虚函数表vftable。一个类定义的多个对象，他们的vfptr指向的都是同一张虚函数表；
+
+**总结三：**
+
+一个类里面虚函数的个数，不影响对象内存大小(vfptr)，影响的是虚函数表的大小；
+
+**总结四：**
+
+如果派生类中的方法，和基类继承来的某个方法，返回值、函数名、参数列表都相同而且基类的方法是virtua1虚函数，那么派生类的这个方法，自动处理成虚函数；
+
 
 
 下面通过案例进行讲解多态
@@ -894,7 +912,7 @@ int a = 0;
 int *p = new (&a) int(20);    //在指定的a地址内存填充20；
 ```
 
-
+new会进行初始化，而malloc不会初始化；
 
 ### 39.const和define的区别
 
@@ -1033,4 +1051,210 @@ void main()
 ### 42.容器的空间配置器（allocator）
 
 STL 容器（如 `vector`, `list`, `map`）内部不直接用 `new` 和 `delete` 管理内存，而是通过 **allocator（配置器）** 接口来统一完成**内存申请 + 对象构造 + 内存释放 + 析构**四步。
+
+### 43.友元函数
+
+**友元函数（friend function）** 是一种可以访问类的私有（`private`）和保护（`protected`）成员的**非成员函数**。它不是类的成员，却能像成员函数一样访问类的内部。在写运算符重载函数时比较常用；
+
+```c++
+class MyClass {
+private:
+    int data;
+
+public:
+    MyClass(int d) : data(d) {}
+
+    // 声明友元函数
+    friend void printData(const MyClass& obj);
+};
+
+void printData(const MyClass& obj) {
+    std::cout << "数据是：" << obj.data << std::endl;
+}
+
+```
+
+### 44.深拷贝与浅拷贝
+
+**浅拷贝**：仅复制指针的值（地址），多个对象共享同一块内存。
+
+**深拷贝**：复制指针指向的实际数据，两个对象互不干扰。
+
+```c++
+class MyClass {
+public:
+    int* data;
+
+    MyClass(int val) {
+        data = new int(val);
+    }
+
+    // 浅拷贝构造函数（默认生成）
+    MyClass(const MyClass& other) {
+        data = other.data;  // 只是复制了指针
+    }
+
+    // 深拷贝构造函数（手动实现）
+    // MyClass(const MyClass& other) {
+    //     data = new int(*other.data);  // 拷贝内容
+    // }
+
+    ~MyClass() {
+        delete data;
+    }
+};
+
+int main(){
+    MyClass a(10);
+    MyClass b = a;   // 执行浅拷贝（默认行为）
+
+    *a.data = 20;
+    std::cout << *b.data << std::endl;  // 输出 20，不是期望的 10！
+
+    // 当 a 和 b 析构时，两次 delete data —— 崩溃（野指针）
+}
+```
+
+### 45.迭代器失效问题？
+
+迭代器失效（Iterator Invalidated）是指原来指向容器中某元素的迭代器，在某些操作（如插入、删除或容器重分配）后**变得不可用或指向错误位置**，继续使用会导致 **未定义行为（crash、错值、逻辑错误）**。
+
+```c++
+//情况一
+std::vector<int> v = {1, 2, 3};
+auto it = v.begin();
+v.push_back(4);  // 如果扩容，it 会失效！
+
+//情况二
+v.insert(it,4); // 插入行为，会使it之后的所有迭代器都失效；
+//正确做法
+it = v.insert(it,4);
+
+//情况三
+v.erase(it)   //删除行为，会使it之后的所有迭代器都失效；
+//正确做法
+it = v.erase(it);
+```
+
+==在vector中的erase，删除一个元素后，后面的元素都往前移动一个位置，那迭代器不是应该还可以指向vector元素吗，为什么还会失效?==
+
+`erase` 操作确实会导致被删除元素之后的所有元素向前移动，但**迭代器失效的根本原因并不是元素移动本身**，而是因为 `vector` 的内存管理机制和标准库的规范设计。**可能会重新分配内存；**
+
+- **元素移动 ≠ 迭代器有效**：虽然元素向前移动，但迭代器的本质是**指向内存地址的指针或封装对象**。当元素移动后，原迭代器指向的地址可能已经存储了其他数据或变成非法地址。
+- **标准库的强制规定**：C++ 标准明确要求 `erase` 操作会使指向被删除元素及之后所有元素的迭代器失效，这是为了统一行为并避免隐式错误。
+
+即使某些实现中迭代器物理上仍指向有效元素（如新移动过来的元素），标准库仍规定它**逻辑上失效**，因为：
+
+- **一致性要求**：不同编译器的实现可能不同（如是否原地覆盖或重新分配内存），标准统一规定失效可避免依赖实现细节。
+- **安全性**：防止开发者误用迭代器导致跨平台的未定义行为。
+
+### 46.继承
+
+| 继承方式  | 基类的访问限定 | 派生类的访问限定 | 外部的访问限定 |
+| --------- | -------------- | ---------------- | -------------- |
+| public    | public         | public           | Y              |
+| public    | protected      | protected        | N              |
+| public    | private        | 不可见的         | N              |
+| protected | public         | protected        | N              |
+| protected | protected      | protected        | N              |
+| protected | private        | 不可见的         | N              |
+| private   | public         | private          | N              |
+| private   | protected      | private          | N              |
+| private   | private        | 不可见的         | N              |
+
+### 47.继承中的隐藏关系
+
+在派生类中，如果定义了一个与基类**同名但参数列表不同**的成员函数或变量，它会**隐藏**（遮蔽）基类中所有**同名**成员函数或变量（不管参数列表是否相同）。
+
+```c++
+#include <iostream>
+using namespace std;
+
+class Base {
+public:
+    void show() {
+        cout << "Base::show()" << endl;
+    }
+
+    void show(int x) {
+        cout << "Base::show(int)" << endl;
+    }
+};
+
+class Derived : public Base {
+public:
+    using Base::show;   // 方法二：引入所有 Base::show 重载版本
+    void show() {
+        cout << "Derived::show()" << endl;
+    }
+};
+
+int main() {
+    Derived d;
+    d.show();       // ✅ 调用 Derived::show()
+    // d.show(1);   // ❌ 编译错误：Base::show(int) 被隐藏了
+    d.Base::show(1);  //方法一：可以这样调用
+}
+```
+
+**同名函数与变量混合时优先隐藏函数**
+
+```c++
+class Base {
+public:
+    void foo() { }
+};
+
+class Derived : public Base {
+public:
+    int foo;  // 隐藏 Base::foo() 函数
+};
+
+```
+
+### 48.基类与派生类转换
+
+在继承结构中进行上下的类型转换，默认只支持从下到上的类型的转换；
+
+```c++
+int main(){
+	Derived d(10);
+	Base b(20);
+	b=d;   // ✅派生类对象赋给基类对象    类型从下到上的转换
+	d=b;   // ❌基类对象赋给派生类对象    类型从上到下的转换
+	Base *pb=&d;    // ✅基类指针《-派生类   类型从下到上的转换
+	Derived *pd=&b; // ✅派生类指针《-基类   类型从上到下的转换
+}
+```
+
+### 49.继承中的覆盖关系
+
+![image-20250608195457780](D:\Hello World\CS-note\picture\image-20250608195457780.png)
+
+派生类中定义了一个函数，它与基类中的**虚函数**具有**相同的函数签名**（包括函数名、参数类型、参数个数、const 修饰等），此时派生类的函数将**覆盖**基类的虚函数。
+
+```c++
+#include <iostream>
+using namespace std;
+
+class Base {
+public:
+    virtual void speak() const {
+        cout << "Base speaking" << endl;
+    }
+};
+
+class Derived : public Base {
+public:
+    void speak() const override {  // 完全一致，构成覆盖
+        cout << "Derived speaking" << endl;
+    }
+};
+
+int main() {
+    Base* b = new Derived();
+    b->speak();  // 输出：Derived speaking（运行时多态）
+    delete b;
+}
+```
 
